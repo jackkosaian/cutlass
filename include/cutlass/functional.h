@@ -381,35 +381,14 @@ struct red<half2>
   CUTLASS_DEVICE
   void operator()(half2 *ptr, const half2 &data)
   {
-#if !defined(__CUDA_ARCH__)
+#if !defined(__CUDA_ARCH__) || (defined(__CUDA_ARCH__)  && (__CUDA_ARCH__ < 600))
       CUTLASS_UNUSED(ptr);
       CUTLASS_UNUSED(data);
-#elif (__CUDA_ARCH__ >= 600)
+#else
 
     // Vector-2 atomic reduction requires .target sm_60 or higher
     uint32_t word = reinterpret_cast<const uint32_t&>(data);
     asm volatile ("red.gpu.global.add.noftz.f16x2 [%0], %1;\n" : : "l"(ptr), "r"(word));
-
-#else
-
-    // Use CAS loop
-    uint32_t *ptr_int = reinterpret_cast<uint32_t *>(ptr);
-    uint32_t old_int = *ptr_int;
-    uint32_t assumed_int;
-
-    do
-    {
-      half2 old = reinterpret_cast<half2&>(old_int);
-
-      half hi = __hadd(__high2half(old), __high2half(data));
-      half lo = __hadd(__low2half(old), __low2half(data));
-      half2 update = __halves2half2(hi, lo);
-      uint32_t update_int = reinterpret_cast<const uint32_t&>(update);
-
-      assumed_int = old_int;
-      old_int = atomicCAS(ptr_int, assumed_int, update_int);
-
-    } while (assumed_int != old_int);
 
 #endif // (__CUDA_ARCH__ >= 600)
   }
